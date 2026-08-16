@@ -1,0 +1,123 @@
+{#
+ # Painel do plugin Wallpaper.
+ # @license GPL-3.0-or-later
+ #}
+
+<div class="row">
+   {% for key, channel in channels %}
+      <div class="col-12 col-lg-6 mb-3">
+         <div class="card h-100">
+            <div class="card-header">
+               <h3 class="card-title">
+                  {% if key == 'producao' %}
+                     <i class="ti ti-world"></i> Produção — frota inteira
+                  {% else %}
+                     <i class="ti ti-flask"></i> Piloto — grupo de teste
+                  {% endif %}
+               </h3>
+            </div>
+            <div class="card-body">
+               <label class="form-label">URL fixa para a política do Intune</label>
+               <div class="input-group mb-3">
+                  <input type="text" class="form-control font-monospace" readonly
+                         value="{{ channel.url }}">
+               </div>
+
+               {% if channel.has_image %}
+                  <table class="table table-sm">
+                     <tr><th>Arquivo</th><td>{{ channel.filename }}</td></tr>
+                     <tr><th>Formato</th><td>{{ channel.mime }}</td></tr>
+                     <tr><th>Dimensões</th><td>{{ channel.width }} × {{ channel.height }} px</td></tr>
+                     <tr><th>Tamanho</th><td>{{ (channel.filesize / 1024)|round }} KB</td></tr>
+                     <tr><th>Atualizado em</th><td>{{ channel.date_mod ? channel.date_mod|formatted_datetime : '-' }}</td></tr>
+                  </table>
+                  <img src="{{ channel.url }}" alt="Prévia do canal {{ key }}"
+                       class="img-fluid rounded border">
+               {% else %}
+                  <div class="alert alert-warning mb-0">
+                     Nenhuma imagem enviada. A URL acima responderá 404 até o primeiro envio.
+                  </div>
+               {% endif %}
+            </div>
+
+            {% set may_upload = key == 'producao' ? can_promote : can_upload %}
+            {% if may_upload %}
+               <div class="card-footer">
+                  <form method="post" action="{{ action }}" enctype="multipart/form-data">
+                     <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token }}">
+                     <input type="hidden" name="channel" value="{{ key }}">
+                     <div class="input-group">
+                        <input type="file" name="image" class="form-control"
+                               accept="image/jpeg,image/png" required>
+                        <button type="submit" name="upload" class="btn btn-primary">
+                           <i class="ti ti-upload"></i> Enviar
+                        </button>
+                     </div>
+                     <small class="form-hint">JPEG ou PNG.</small>
+                  </form>
+               </div>
+            {% endif %}
+         </div>
+      </div>
+   {% endfor %}
+</div>
+
+{% if can_promote %}
+   <div class="card mb-3">
+      <div class="card-body d-flex align-items-center justify-content-between flex-wrap gap-2">
+         <div>
+            <strong>Promover piloto → produção</strong>
+            <div class="text-muted">
+               Copia a imagem validada no piloto para o canal de produção.
+               A URL de produção não muda: a frota recebe a nova imagem na próxima sincronização do Intune.
+            </div>
+         </div>
+         <form method="post" action="{{ action }}"
+               onsubmit="return confirm('Aplicar a imagem do piloto em toda a frota?');">
+            <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token }}">
+            <button type="submit" name="promote" class="btn btn-warning"
+                    {{ channels.piloto.has_image ? '' : 'disabled' }}>
+               <i class="ti ti-arrow-big-right"></i> Promover
+            </button>
+         </form>
+      </div>
+   </div>
+{% endif %}
+
+{% if can_upload %}
+   <div class="card">
+      <div class="card-header"><h3 class="card-title">Restrição de acesso por rede (opcional)</h3></div>
+      <form method="post" action="{{ action }}">
+         <input type="hidden" name="_glpi_csrf_token" value="{{ csrf_token }}">
+         <div class="card-body">
+            <div class="alert alert-info">
+               Deixe <strong>Redes autorizadas</strong> em branco para liberar qualquer origem.
+               Ao preencher, apenas as faixas listadas conseguirão baixar a imagem — máquinas
+               fora da rede corporativa (home office sem VPN, 4G) deixarão de aplicar a wallpaper,
+               e o Intune não reporta o bloqueio. Cada tentativa negada é registrada no log do GLPI.
+            </div>
+
+            <div class="mb-3">
+               <label class="form-label">Redes autorizadas</label>
+               <textarea name="allowed_networks" class="form-control font-monospace" rows="3"
+                         placeholder="10.0.0.0/8, 192.168.0.0/16">{{ config.allowed_networks }}</textarea>
+               <small class="form-hint">CIDR ou IP avulso, separados por vírgula, espaço ou quebra de linha. IPv4 e IPv6.</small>
+            </div>
+
+            <div class="mb-3">
+               <label class="form-label">Proxies confiáveis</label>
+               <textarea name="trusted_proxies" class="form-control font-monospace" rows="2"
+                         placeholder="10.20.0.5">{{ config.trusted_proxies }}</textarea>
+               <small class="form-hint">
+                  Preencha apenas se houver proxy reverso na frente do GLPI. O cabeçalho
+                  <code>X-Forwarded-For</code> só é considerado quando a conexão vem de um destes endereços;
+                  caso contrário qualquer cliente poderia forjar o próprio IP e burlar a restrição.
+               </small>
+            </div>
+         </div>
+         <div class="card-footer text-end">
+            <button type="submit" name="save_config" class="btn btn-primary">Salvar</button>
+         </div>
+      </form>
+   </div>
+{% endif %}
