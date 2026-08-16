@@ -1,209 +1,207 @@
 # GLPI Wallpaper
 
-Plugin para **GLPI 11** que hospeda imagens de wallpaper em URLs fixas e públicas,
-para serem consumidas pela política `Personalization/DesktopImageUrl` do
-**Microsoft Intune**.
+A **GLPI 11** plugin that hosts wallpaper images at fixed, public URLs so they can be
+consumed by the **Microsoft Intune** `Personalization/DesktopImageUrl` policy.
 
-O upload é protegido pelos perfis do GLPI; o download é anônimo, porque o Windows
-baixa a imagem no contexto `SYSTEM` da máquina, sem sessão nem cookie.
+Uploads are protected by GLPI profiles; downloads are anonymous, because Windows
+fetches the image under the machine's `SYSTEM` context, with no session and no cookie.
 
-## Por que existe
+## Why it exists
 
-Não há plugin equivalente no ecossistema GLPI. O
+There is no equivalent plugin in the GLPI ecosystem.
 [Branding](https://help.glpi-project.org/doc-plugins/plugin-glpi-network/branding)
-só troca o fundo da tela de login do próprio GLPI, e o
-[phonebg](https://github.com/monta990/phonebg) gera wallpapers de telefones a partir
-de dados do inventário. Nenhum dos dois serve uma imagem para MDM consumir.
+only changes the background of GLPI's own login screen, and
+[phonebg](https://github.com/monta990/phonebg) generates phone wallpapers from
+inventory data. Neither serves an image for an MDM to consume.
 
-## Como funciona
+## How it works
 
-Dois canais fixos, cada um com uma URL que **nunca muda**:
+Two fixed channels, each with a URL that **never changes**:
 
-| Canal | Uso | URL |
+| Channel | Purpose | URL |
 |---|---|---|
-| `producao` | frota inteira | `https://SEU-GLPI/plugins/wallpaper/producao.jpg` |
-| `piloto` | grupo de teste | `https://SEU-GLPI/plugins/wallpaper/piloto.jpg` |
+| `producao` | entire fleet | `https://YOUR-GLPI/plugins/wallpaper/producao.jpg` |
+| `piloto` | test group | `https://YOUR-GLPI/plugins/wallpaper/piloto.jpg` |
 
-Fluxo pensado para a equipe validar antes de atingir todo mundo:
+The workflow is built so the team can validate before reaching everyone:
 
-1. Sobe a imagem nova no canal **piloto**
-2. O grupo de teste no Intune já aponta para a URL do piloto — valida na máquina real
-3. Clica em **Promover piloto → produção**
-4. A URL de produção não muda; a frota recebe a nova imagem na próxima sincronização
+1. Upload the new image to the **pilot** channel
+2. The Intune test group already points at the pilot URL — validate on a real machine
+3. Click **Promote pilot → production**
+4. The production URL does not change; the fleet picks up the new image on its next sync
 
-Trocar a wallpaper nunca exige mexer na política do Intune.
+Changing the wallpaper never requires touching the Intune policy.
 
-### Por que a URL termina em `.jpg`
+### Why the URL ends in `.jpg`
 
-O Personalization CSP **classifica o tipo do arquivo** e expõe o resultado em
-`DesktopImageStatus`, onde o código **`4` significa "Unknown file type"**. A
-documentação da Microsoft descreve o valor sempre como *"an http or https URL to a
-jpg, jpeg or png image"*, com exemplos que trazem a extensão explícita.
+The Personalization CSP **classifies the file type** and reports the result through
+`DesktopImageStatus`, where code **`4` means "Unknown file type"**. Microsoft's
+documentation consistently describes the value as *"an http or https URL to a jpg,
+jpeg or png image"*, with examples that always carry an explicit extension.
 
-Por isso a URL pública é uma rota nativa do GLPI 11
+That is why the public URL is a native GLPI 11 route
 ([`src/Controller/ImageController.php`](wallpaper/src/Controller/ImageController.php))
-terminada em extensão de imagem, em vez de um `image.php?c=producao`.
+ending in an image extension, rather than `image.php?c=producao`.
 
-A extensão pedida **não decide o que é servido** — o `Content-Type` vem sempre do
-arquivo real. Se você trocar a imagem de PNG para JPEG, a URL antiga continua
-respondendo e a política do Intune não quebra; o painel apenas avisa da divergência
-para você alinhar quando puder.
+The requested extension **does not decide what is served** — the `Content-Type` always
+comes from the actual file. If you switch the image from PNG to JPEG, the old URL keeps
+responding and the Intune policy does not break; the panel simply warns about the
+mismatch so you can align it when convenient.
 
-A rota antiga segue disponível para diagnóstico:
-`https://SEU-GLPI/plugins/wallpaper/front/image.php?c=producao`
+The legacy route remains available for diagnostics:
+`https://YOUR-GLPI/plugins/wallpaper/front/image.php?c=producao`
 
-## Instalação
+## Installation
 
 ```bash
 cd /var/www/glpi/plugins
 git clone https://github.com/rafaelfariasbsb/glpi-wallpaper.git
-mv glpi-wallpaper/wallpaper .    # o diretório do plugin precisa se chamar "wallpaper"
+mv glpi-wallpaper/wallpaper .    # the plugin directory must be named "wallpaper"
 chown -R www-data:www-data wallpaper
 ```
 
-Depois, em **Configurar → Plugins**, instale e ative o *Wallpaper*.
+Then install and enable *Wallpaper* under **Setup → Plugins**.
 
-O plugin grava as imagens em `files/_plugins/wallpaper/`, criado na instalação.
-Nunca escreve no próprio diretório de código.
+The plugin stores images in `files/_plugins/wallpaper/`, created at install time. It
+never writes to its own code directory.
 
-## Permissões
+## Permissions
 
-Em **Administração → Perfis → (perfil) → Wallpaper**:
+Under **Administration → Profiles → (profile) → Wallpaper**:
 
-| Direito | Permite |
+| Right | Allows |
 |---|---|
-| Ler | ver o painel e as URLs |
-| Atualizar | enviar imagem para o **piloto** e editar as configurações |
-| Promover | promover piloto → produção, e enviar imagem direto em **produção** |
+| Read | viewing the panel and the URLs |
+| Update | uploading to the **pilot** channel and editing settings |
+| Promote | promoting pilot → production, and uploading directly to **production** |
 
-Enviar direto para produção exige o direito de promover, porque atinge a frota
-inteira sem passar pelo piloto.
+Uploading straight to production requires the promote right, because it reaches the
+entire fleet without passing through the pilot.
 
-Na instalação, perfis que já podem atualizar a Configuração do GLPI recebem os três
-direitos; todos os demais ficam **sem acesso**.
+At install time, profiles that can already update GLPI's Configuration receive all
+three rights; every other profile gets **no access**.
 
-## Cabeçalhos da resposta
+## Response headers
 
-A entrega monta os cabeçalhos manualmente
-([`src/ImageResponse.php`](wallpaper/src/ImageResponse.php)), em vez de delegar ao
-core, para que o comportamento seja auditável aqui:
+Delivery builds its headers explicitly
+([`src/ImageResponse.php`](wallpaper/src/ImageResponse.php)) instead of delegating to
+the core, so the behavior is auditable in one place:
 
-| Cabeçalho | Valor | Por quê |
+| Header | Value | Rationale |
 |---|---|---|
-| `Content-Type` | `image/jpeg` ou `image/png` | Exato, vindo da allowlist — nunca refletido de entrada do usuário |
-| `X-Content-Type-Options` | `nosniff` | Impede reinterpretação do conteúdo como outro tipo |
-| `Content-Disposition` | `inline; filename="wallpaper-<canal>.<ext>"` | Exibição direta, sem download forçado |
-| `Cache-Control` | `public, max-age=<TTL>` | Permite cache na borda e no cliente |
-| `ETag` | `"<sha256 do conteúdo>"` | Validador forte para requisições condicionais |
-| `Last-Modified` | data do arquivo | Validador alternativo |
-| `Content-Length` | tamanho real | Enviado também em `HEAD` |
+| `Content-Type` | `image/jpeg` or `image/png` | Exact, from the allowlist — never reflected from user input |
+| `X-Content-Type-Options` | `nosniff` | Prevents the content being reinterpreted as another type |
+| `Content-Disposition` | `inline; filename="wallpaper-<channel>.<ext>"` | Direct display, no forced download |
+| `Cache-Control` | `public, max-age=<TTL>` | Enables edge and client caching |
+| `ETag` | `"<sha256 of the content>"` | Strong validator for conditional requests |
+| `Last-Modified` | file timestamp | Alternative validator |
+| `Content-Length` | actual size | Sent on `HEAD` as well |
 
-Outros comportamentos:
+Other behavior:
 
-- **`HEAD`** responde os mesmos cabeçalhos, sem corpo — o Front Door e o próprio
-  Intune podem sondar antes de baixar.
-- **`If-None-Match` / `If-Modified-Since`** respondem **304**, com `If-None-Match`
-  tendo precedência (RFC 9110). Validadores fracos (`W/"..."`) são aceitos.
-- **Método diferente de GET/HEAD** responde **405** com `Allow`.
-- **Canal sem imagem, registro incompleto ou arquivo ausente** responde **404 limpo** —
-  nunca 200 com corpo vazio, que o Windows trataria como imagem inválida.
-- Buffers de saída são descartados antes de escrever, para que nenhum warning do PHP
-  corrompa os bytes da imagem.
+- **`HEAD`** returns the same headers with no body — Front Door and Intune itself may
+  probe before downloading.
+- **`If-None-Match` / `If-Modified-Since`** return **304**, with `If-None-Match` taking
+  precedence (RFC 9110). Weak validators (`W/"..."`) are accepted.
+- **Any method other than GET/HEAD** returns **405** with `Allow`.
+- **Empty channel, incomplete record, or missing file** returns a **clean 404** — never
+  a 200 with an empty body, which Windows would treat as an invalid image.
+- Output buffers are discarded before writing, so no PHP warning can corrupt the image
+  bytes.
 
-### Cache e o Azure Front Door
+### Caching and Azure Front Door
 
-O TTL é configurável no painel (padrão **3600s**; `0` desativa). Cachear na borda
-importa porque este é um endpoint **anônimo** — sem cache, ele seria uma fonte barata
-de carga contra o GLPI.
+The TTL is configurable in the panel (default **3600s**; `0` disables it). Edge caching
+matters because this is an **anonymous** endpoint — without it, it would be a cheap
+source of load against GLPI.
 
-⚠️ **Armadilha operacional:** como a URL é fixa, depois de *Promover piloto → produção*
-a borda pode continuar servindo a imagem antiga por até o TTL. Faça **purge do cache
-no Front Door** após promover, ou use um TTL compatível com a urgência da troca.
+⚠️ **Operational trap:** since the URL is fixed, after *Promote pilot → production* the
+edge may keep serving the old image for up to the TTL. **Purge the Front Door cache**
+after promoting, or use a TTL that matches how urgent your changes are.
 
-## Restrição de acesso por rede (opcional)
+## Optional network restriction
 
-**Decisão: o filtro de IP vem DESLIGADO por padrão.**
+**Decision: the IP filter ships DISABLED by default.**
 
-O motivo é o cenário real deste plugin — GLPI publicado na internet atrás do
-**Azure Front Door**, servindo máquinas cloud-native:
+The reason is this plugin's actual deployment — GLPI published on the internet behind
+**Azure Front Door**, serving cloud-native machines:
 
-1. **Atrás de um CDN, `REMOTE_ADDR` é sempre o IP da borda, nunca o da máquina.**
-   Um filtro ingênuo avaliaria o Front Door, não o device — bloqueando todo mundo ou
-   ninguém, mas nunca o que se pretendia.
-2. **Máquinas cloud-native saem de qualquer rede** — home office, 4G, rede de cliente.
-   Restringir por IP quebra exatamente os dispositivos que mais dependem do MDM.
-3. **A URL é fixa e adivinhável por design.** É uma exigência da política do Intune, e
-   o conteúdo é uma imagem estática destinada a aparecer em toda a frota. Aceitável
-   quando a wallpaper não carrega informação sensível.
+1. **Behind a CDN, `REMOTE_ADDR` is always the edge IP, never the machine's.** A naive
+   filter would evaluate Front Door rather than the device — blocking everyone or no
+   one, but never what was intended.
+2. **Cloud-native machines connect from anywhere** — home office, 4G, customer networks.
+   Restricting by IP breaks precisely the devices that depend on MDM the most.
+3. **The URL is fixed and guessable by design.** That is a requirement of the Intune
+   policy, and the content is a static image meant to appear across the whole fleet.
+   Acceptable as long as the wallpaper carries no sensitive information.
 
-Se ainda assim você precisar restringir, preencha no painel:
+If you still need to restrict access, fill in the panel:
 
-| Campo | Efeito |
+| Field | Effect |
 |---|---|
-| `Redes autorizadas` | CIDRs (IPv4/IPv6) ou IPs avulsos. Vazio = libera qualquer origem |
-| `Proxies confiáveis` | **Obrigatório atrás de CDN.** Ranges do Azure Front Door (service tag `AzureFrontDoor.Backend`) |
-| `Cabeçalho de IP real` | `X-Forwarded-For` ou `X-Azure-ClientIP` |
+| `Allowed networks` | CIDRs (IPv4/IPv6) or bare IPs. Empty = any origin allowed |
+| `Trusted proxies` | **Required behind a CDN.** Azure Front Door ranges (service tag `AzureFrontDoor.Backend`) |
+| `Client IP header` | `X-Forwarded-For` or `X-Azure-ClientIP` |
 
-O cabeçalho de IP **só é lido quando a conexão vem de um endereço listado em
-"Proxies confiáveis"** — nunca cru. Sem essa regra, qualquer cliente forjaria o
-próprio IP e a restrição seria decorativa. O Front Door preenche `X-Azure-ClientIP`
-com um único endereço, enquanto o `X-Forwarded-For` chega como cadeia.
+The IP header is **only read when the connection comes from an address listed under
+"Trusted proxies"** — never raw. Without that rule, any client could forge its own IP
+and the restriction would be decorative. Front Door populates `X-Azure-ClientIP` with a
+single address, whereas `X-Forwarded-For` arrives as a chain.
 
-Salvar redes autorizadas sem declarar proxies confiáveis emite um aviso no painel,
-porque é a combinação que silenciosamente bloqueia a frota inteira.
+Saving allowed networks without declaring any trusted proxy raises a warning in the
+panel, because that combination silently locks out the entire fleet.
 
-Cada bloqueio é registrado no log do GLPI com IP e canal — o Intune não reporta o
-bloqueio, a wallpaper apenas não aplica.
+Every block is recorded in the GLPI log with the IP and channel — Intune does not report
+the block, the wallpaper simply fails to apply.
 
-Recomendado: subir com a lista vazia, validar o piloto ponta a ponta e só então
-considerar restringir.
+Recommended: deploy with the list empty, validate the pilot end to end, and only then
+consider restricting.
 
-## Segurança
+## Security
 
-- O firewall do GLPI 11 libera **apenas** a entrega da imagem
-  (`Firewall::STRATEGY_NO_CHECK` no script legado e `#[SecurityStrategy]` na rota);
-  o painel continua exigindo autenticação e permissão.
-- O canal é validado contra uma lista fixa (`producao`, `piloto`) e o caminho do
-  arquivo deriva dele: não há travessia de diretório possível.
-- O upload é validado pelo conteúdo real do arquivo (`getimagesize`), não pela
-  extensão. Só JPEG e PNG são aceitos.
-- O `Content-Type` servido é revalidado contra a allowlist na hora da entrega, mesmo
-  já tendo sido validado no upload.
-- As imagens ficam fora do docroot, em `files/_plugins/`, gravadas como `.bin` e
-  servidas pelo PHP.
+- The GLPI 11 firewall exempts **only** image delivery (`Firewall::STRATEGY_NO_CHECK`
+  for the legacy script and `#[SecurityStrategy]` on the route); the panel still
+  requires authentication and rights.
+- The channel is validated against a fixed allowlist (`producao`, `piloto`) and the file
+  path derives from it: directory traversal is not possible.
+- Uploads are validated by the file's real content (`getimagesize`), not by extension.
+  Only JPEG and PNG are accepted.
+- The served `Content-Type` is re-validated against the allowlist at delivery time, even
+  though it was already validated at upload.
+- Images live outside the docroot, in `files/_plugins/`, stored as `.bin` and served by
+  PHP.
 
-## Configuração no Intune
+## Intune configuration
 
-Passo a passo completo — criação das políticas, grupos piloto/produção, purge do
-Front Door, verificação no device e tabela de problemas comuns:
+Full step-by-step — creating the policies, pilot/production groups, Front Door purge,
+on-device verification, and a troubleshooting table:
 
 📄 **[docs/INTUNE.md](docs/INTUNE.md)**
 
-Resumo: política do **Settings catalog** → categoria **Personalization** →
-**Desktop Image Url** com a URL que o painel exibe, atribuída ao grupo
-correspondente.
+In short: a **Settings catalog** policy → **Personalization** category → **Desktop
+Image Url** set to the URL shown in the panel, assigned to the matching group.
 
-Dois pontos que costumam morder:
+Two things that commonly bite:
 
-- O Personalization CSP é suportado em **Enterprise/Education** e funciona em **Pro**
-  apenas com `SetEduPolicies` do
+- The Personalization CSP is supported on **Enterprise/Education** and works on **Pro**
+  only with `SetEduPolicies` from the
   [SharedPC CSP](https://learn.microsoft.com/windows/client-management/mdm/sharedpc-csp)
-  ou `BootToCloudPCEnhanced`. Pro **não** está automaticamente fora, mas exige
-  configuração adicional.
-- Definir a wallpaper por esta política **impede o usuário de trocá-la**.
+  or with `BootToCloudPCEnhanced`. Pro is **not** automatically out, but it does require
+  extra configuration.
+- Setting the wallpaper through this policy **prevents users from changing it**.
 
-## Desenvolvimento
+## Development
 
-Nenhum dos testes exige uma instância GLPI nem PHP instalado na máquina.
+None of the tests require a GLPI instance or a local PHP installation.
 
-Lógica de CIDR e detecção de IP real (32 asserções):
+CIDR logic and real-client-IP detection (32 assertions):
 
 ```bash
 docker run --rm -v "$PWD":/app -w /app php:8.3-cli php tests/network_filter_test.php
 ```
 
-Entrega HTTP ponta a ponta com `curl` — headers, 304 condicional, `HEAD`, 404 e 405
-(24 asserções). Sobe o código real do plugin sobre stubs mínimos do GLPI:
+End-to-end HTTP delivery with `curl` — headers, conditional 304, `HEAD`, 404 and 405
+(24 assertions). Runs the plugin's real code against minimal GLPI stubs:
 
 ```bash
 docker run --rm -v "$PWD":/app -w /app php:8.3-cli sh tests/endpoint/run.sh
@@ -215,6 +213,10 @@ Lint:
 docker run --rm -v "$PWD":/app -w /app php:8.3-cli sh -c 'find wallpaper -name "*.php" -exec php -l {} \;'
 ```
 
-## Licença
+## Note on language
 
-GPL-3.0-or-later, a mesma do GLPI.
+Code comments and the admin UI are in Portuguese; the documentation is in English.
+
+## License
+
+GPL-3.0-or-later, the same as GLPI.
