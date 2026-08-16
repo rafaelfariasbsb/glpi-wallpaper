@@ -18,10 +18,16 @@
             </div>
             <div class="card-body">
                <label class="form-label">URL fixa para a política do Intune</label>
-               <div class="input-group mb-3">
+               <div class="input-group mb-2">
                   <input type="text" class="form-control font-monospace" readonly
                          value="{{ channel.url }}">
                </div>
+               <small class="form-hint mb-3 d-block">
+                  Termina em <code>.{{ channel.url|split('.')|last }}</code> porque o Windows
+                  classifica o tipo do arquivo e falha com <em>Unknown file type</em> quando a URL
+                  não o declara. Rota alternativa para diagnóstico:
+                  <code>{{ channel.legacy_url }}</code>
+               </small>
 
                {% if channel.has_image %}
                   <table class="table table-sm">
@@ -109,9 +115,41 @@
                <textarea name="trusted_proxies" class="form-control font-monospace" rows="2"
                          placeholder="10.20.0.5">{{ config.trusted_proxies }}</textarea>
                <small class="form-hint">
-                  Preencha apenas se houver proxy reverso na frente do GLPI. O cabeçalho
-                  <code>X-Forwarded-For</code> só é considerado quando a conexão vem de um destes endereços;
+                  Obrigatório se houver CDN ou proxy reverso na frente do GLPI (ex.: Azure Front Door):
+                  nesse caso o <code>REMOTE_ADDR</code> é sempre o da borda, nunca o da máquina.
+                  O cabeçalho de IP só é considerado quando a conexão vem de um destes endereços;
                   caso contrário qualquer cliente poderia forjar o próprio IP e burlar a restrição.
+               </small>
+            </div>
+
+            <div class="mb-3">
+               <label class="form-label">Cabeçalho de IP real</label>
+               <select name="client_ip_header" class="form-select">
+                  {% for header in client_ip_headers %}
+                     <option value="{{ header }}" {{ config.client_ip_header == header ? 'selected' : '' }}>
+                        {{ header }}
+                     </option>
+                  {% endfor %}
+               </select>
+               <small class="form-hint">
+                  Lido apenas quando a conexão vem de um proxy confiável.
+                  O Azure Front Door preenche <code>X-Azure-ClientIP</code> com um único endereço,
+                  enquanto o <code>X-Forwarded-For</code> chega como cadeia.
+               </small>
+            </div>
+         </div>
+
+         <div class="card-header"><h3 class="card-title">Cache</h3></div>
+         <div class="card-body">
+            <div class="mb-3">
+               <label class="form-label">TTL do cache (segundos)</label>
+               <input type="number" name="cache_ttl" min="0" step="60" class="form-control"
+                      style="max-width: 12rem" value="{{ config.cache_ttl }}">
+               <small class="form-hint">
+                  Vira <code>Cache-Control: public, max-age=N</code>. <code>0</code> desativa o cache.
+                  <strong>Atenção:</strong> como a URL é fixa, após promover para produção a borda
+                  pode continuar servindo a imagem antiga por até este tempo — faça purge do cache
+                  no CDN ou use um TTL compatível com a urgência da troca.
                </small>
             </div>
          </div>

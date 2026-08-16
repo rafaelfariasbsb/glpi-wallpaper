@@ -24,6 +24,7 @@ function plugin_wallpaper_install(): bool
                 `channel`  varchar(20) NOT NULL,
                 `filename` varchar(255) DEFAULT NULL,
                 `mime`     varchar(100) DEFAULT NULL,
+                `etag`     varchar(64) DEFAULT NULL,
                 `filesize` int NOT NULL DEFAULT 0,
                 `width`    int NOT NULL DEFAULT 0,
                 `height`   int NOT NULL DEFAULT 0,
@@ -34,6 +35,10 @@ function plugin_wallpaper_install(): bool
             ) ENGINE=InnoDB DEFAULT CHARSET={$charset} COLLATE={$collation} ROW_FORMAT=DYNAMIC"
         );
     }
+
+    // Instalacoes anteriores a 1.1.0 nao tinham a coluna de ETag. Fica nula:
+    // Wallpaper::getEtag() calcula e persiste no primeiro acesso a cada canal.
+    $migration->addField($table, 'etag', 'string', ['value' => null, 'after' => 'mime']);
 
     // Os canais sao fixos: as URLs cadastradas no Intune dependem disso.
     foreach (Wallpaper::CHANNELS as $channel) {
@@ -48,9 +53,15 @@ function plugin_wallpaper_install(): bool
         }
     }
 
+    // setConfigurationValues nao sobrescreve chaves ja existentes: instalacoes
+    // antigas mantem o que o administrador configurou e apenas ganham as novas.
     Config::setConfigurationValues(Wallpaper::CONFIG_CONTEXT, [
+        // Filtro de IP desligado por padrao: maquinas cloud-native saem de
+        // qualquer rede, e atras de CDN o REMOTE_ADDR nem seria o do device.
         'allowed_networks' => '',
         'trusted_proxies'  => '',
+        'cache_ttl'        => (string) Wallpaper::DEFAULT_CACHE_TTL,
+        'client_ip_header' => 'X-Forwarded-For',
     ]);
 
     // Sem acesso por padrao em todos os perfis...
@@ -85,7 +96,7 @@ function plugin_wallpaper_uninstall(): bool
 
     Config::deleteConfigurationValues(
         Wallpaper::CONFIG_CONTEXT,
-        ['allowed_networks', 'trusted_proxies']
+        ['allowed_networks', 'trusted_proxies', 'cache_ttl', 'client_ip_header']
     );
 
     ProfileRight::deleteProfileRights([Wallpaper::$rightname]);

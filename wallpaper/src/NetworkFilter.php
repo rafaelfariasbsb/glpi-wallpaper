@@ -13,11 +13,17 @@ class NetworkFilter
     /**
      * IP real do cliente.
      *
-     * X-Forwarded-For e forjavel por qualquer cliente. So o aceitamos quando a
-     * conexao vem de um proxy que o administrador cadastrou explicitamente;
+     * Cabecalhos de IP sao forjaveis por qualquer cliente. So os aceitamos quando
+     * a conexao vem de um proxy que o administrador cadastrou explicitamente;
      * caso contrario o bloqueio por IP seria trivial de contornar.
+     *
+     * Atras de um CDN como o Azure Front Door, REMOTE_ADDR e sempre o IP da borda,
+     * nunca o da maquina: sem os ranges do CDN em $trusted_proxies o filtro
+     * avaliaria o CDN e nao o device.
+     *
+     * @param string $header cabecalho a consultar; ver Wallpaper::CLIENT_IP_HEADERS
      */
-    public static function getClientIp(string $trusted_proxies): string
+    public static function getClientIp(string $trusted_proxies, string $header = 'X-Forwarded-For'): string
     {
         $remote = (string) ($_SERVER['REMOTE_ADDR'] ?? '');
 
@@ -26,12 +32,14 @@ class NetworkFilter
             return $remote;
         }
 
-        $forwarded = (string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? '');
+        $key       = 'HTTP_' . strtoupper(str_replace('-', '_', $header));
+        $forwarded = (string) ($_SERVER[$key] ?? '');
         if ($forwarded === '') {
             return $remote;
         }
 
-        // O cliente original e o primeiro da cadeia.
+        // O cliente original e o primeiro da cadeia (o XFF vem concatenado;
+        // o X-Azure-ClientIP traz um endereco unico, e o explode e inofensivo).
         $first = trim(explode(',', $forwarded)[0]);
 
         return filter_var($first, FILTER_VALIDATE_IP) !== false ? $first : $remote;

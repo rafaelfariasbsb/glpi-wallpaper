@@ -86,13 +86,43 @@ class Wallpaper extends CommonDBTM
         return in_array($channel, self::CHANNELS, true);
     }
 
-    /** URL publica e fixa do canal, cadastrada uma unica vez no Intune. */
+    /** Extensao atual do canal; jpg quando ainda nao ha imagem. */
+    public static function getExtension(string $channel): string
+    {
+        $data = self::getChannel($channel);
+        $mime = (string) ($data['mime'] ?? '');
+
+        return self::ALLOWED_MIME[$mime] ?? 'jpg';
+    }
+
+    /**
+     * URL publica e fixa do canal, cadastrada uma unica vez no Intune.
+     *
+     * Termina em extensao de imagem porque o Personalization CSP do Windows
+     * classifica o tipo do arquivo e falha com "Unknown file type"
+     * (DesktopImageStatus = 4) quando a URL nao o declara.
+     */
     public static function getPublicUrl(string $channel): string
     {
         global $CFG_GLPI;
 
-        return ($CFG_GLPI['url_base'] ?? $CFG_GLPI['root_doc'])
-            . '/plugins/wallpaper/front/image.php?c=' . $channel;
+        return self::getBaseUrl()
+            . '/plugins/wallpaper/' . $channel . '.' . self::getExtension($channel);
+    }
+
+    /** URL do ponto de entrada legado, mantida para diagnostico. */
+    public static function getLegacyUrl(string $channel): string
+    {
+        return self::getBaseUrl() . '/plugins/wallpaper/front/image.php?c=' . $channel;
+    }
+
+    private static function getBaseUrl(): string
+    {
+        global $CFG_GLPI;
+
+        // url_base e o endereco publico configurado no GLPI: e ele que a
+        // maquina alcanca atraves do CDN, nao o caminho interno.
+        return (string) ($CFG_GLPI['url_base'] ?? $CFG_GLPI['root_doc'] ?? '');
     }
 
     /** @return array<string,mixed>|null */
@@ -113,15 +143,66 @@ class Wallpaper extends CommonDBTM
         return $row ?: null;
     }
 
+    /** TTL padrao do cache de borda, em segundos. */
+    public const DEFAULT_CACHE_TTL = 3600;
+
+    /** Cabecalho de IP real aceito, quando ha proxy confiavel na frente. */
+    public const CLIENT_IP_HEADERS = [
+        'X-Forwarded-For',
+        // O Azure Front Door envia o IP do cliente tambem neste cabecalho,
+        // que ao contrario do XFF nao vem de uma cadeia concatenada.
+        'X-Azure-ClientIP',
+    ];
+
     /** @return array<string,mixed> */
     public static function getConfig(): array
     {
         $values = Config::getConfigurationValues(self::CONFIG_CONTEXT);
 
+        $header = (string) ($values['client_ip_header'] ?? 'X-Forwarded-For');
+        if (!in_array($header, self::CLIENT_IP_HEADERS, true)) {
+            $header = 'X-Forwarded-For';
+        }
+
+        $ttl = isset($values['cache_ttl']) ? (int) $values['cache_ttl'] : self::DEFAULT_CACHE_TTL;
+        // Um TTL negativo quebraria o Cache-Control; zero e legitimo (sem cache).
+        if ($ttl < 0) {
+            $ttl = self::DEFAULT_CACHE_TTL;
+        }
+
         return [
             'allowed_networks' => $values['allowed_networks'] ?? '',
             'trusted_proxies'  => $values['trusted_proxies'] ?? '',
+            'cache_ttl'        => $ttl,
+            'client_ip_header' => $header,
         ];
+    }
+
+    /**
+     * ETag do canal: sha256 do conteudo, calculado no upload e guardado no banco.
+     *
+     * Calcular a cada request desperdicaria I/O num endpoint anonimo, que e
+     * justamente onde um atacante poderia gerar carga de graca. Se o valor
+     * estiver ausente (base vinda de versao anterior do plugin), calcula uma
+     * unica vez e persiste.
+     */
+    public static function getEtag(string $channel, array $data, string $path): string
+    {
+        global $DB;
+
+        $etag = (string) ($data['etag'] ?? '');
+        if ($etag !== '') {
+            return $etag;
+        }
+
+        $etag = hash_file('sha256', $path);
+        if ($etag === false) {
+            return '';
+        }
+
+        $DB->update(self::getTable(), ['etag' => $etag], ['channel' => $channel]);
+
+        return $etag;
     }
 
     /**
@@ -169,9 +250,12 @@ class Wallpaper extends CommonDBTM
         }
         @chmod($target, 0o644);
 
+        $etag = hash_file('sha256', $target);
+
         $DB->update(self::getTable(), [
             'filename' => substr((string) $file['name'], 0, 255),
             'mime'     => $mime,
+            'etag'     => $etag !== false ? $etag : null,
             'filesize' => (int) filesize($target),
             'width'    => (int) $info[0],
             'height'   => (int) $info[1],
@@ -206,9 +290,12 @@ class Wallpaper extends CommonDBTM
             return __('Nao foi possivel copiar o arquivo para producao.', 'wallpaper');
         }
 
+        // O conteudo e identico ao do piloto, logo o ETag tambem: copiar em vez
+        // de recalcular mantem os dois canais coerentes.
         $DB->update(self::getTable(), [
             'filename' => $pilot['filename'],
             'mime'     => $pilot['mime'],
+            'etag'     => $pilot['etag'] ?? null,
             'filesize' => $pilot['filesize'],
             'width'    => $pilot['width'],
             'height'   => $pilot['height'],
