@@ -223,6 +223,12 @@ panel, because that combination silently locks out the entire fleet.
 Every block is recorded in the GLPI log with the IP and channel — Intune does not report
 the block, the wallpaper simply fails to apply.
 
+While a network restriction is active, delivery switches to `Cache-Control: private,
+no-store` — otherwise a `public` object cached at the edge would be served to any IP
+without ever consulting the origin, quietly defeating the filter. The trade-off is that
+the endpoint stops benefiting from edge caching, which is the point: the origin has to
+see every request to evaluate it.
+
 Recommended: deploy with the list empty, validate the pilot end to end, and only then
 consider restricting.
 
@@ -271,7 +277,7 @@ docker run --rm -v "$PWD":/app -w /app php:8.3-cli php tests/network_filter_test
 ```
 
 End-to-end HTTP delivery with `curl` — headers, conditional 304, `HEAD`, 404 and 405
-(26 assertions). Runs the plugin's real code against minimal GLPI stubs:
+(29 assertions). Runs the plugin's real code against minimal GLPI stubs:
 
 ```bash
 docker run --rm -v "$PWD":/app -w /app php:8.3-cli sh tests/endpoint/run.sh

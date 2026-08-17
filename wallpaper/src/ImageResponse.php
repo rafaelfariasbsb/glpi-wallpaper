@@ -61,10 +61,25 @@ class ImageResponse
             throw new NotFoundHttpException();
         }
 
-        $size  = filesize($path);
-        $mtime = filemtime($path);
-        $etag  = Wallpaper::getEtag($channel, $data, $path);
-        $ttl   = (int) Wallpaper::getConfig()['cache_ttl'];
+        $config = Wallpaper::getConfig();
+        $size    = filesize($path);
+        $mtime   = filemtime($path);
+        $etag    = Wallpaper::getEtag($channel, $data, $path);
+        $ttl     = (int) $config['cache_ttl'];
+
+        // Com restricao de rede ativa, o filtro roda na origem — mas um cache de
+        // borda "public" guardaria o objeto e passaria a servi-lo para qualquer
+        // IP sem reconsultar a origem, anulando a restricao. Nesse caso a resposta
+        // e privada: cada request precisa chegar aqui para ser avaliada.
+        $restricted = trim((string) $config['allowed_networks']) !== '';
+
+        if ($restricted) {
+            $cache_control = 'private, no-store';
+        } elseif ($ttl > 0) {
+            $cache_control = 'public, max-age=' . $ttl;
+        } else {
+            $cache_control = 'no-cache';
+        }
 
         $headers = [
             // Content-Type exato vindo da allowlist, mais nosniff: nada deve
@@ -73,9 +88,10 @@ class ImageResponse
             'X-Content-Type-Options' => 'nosniff',
             'Content-Disposition'    => 'inline; filename="wallpaper-' . $channel . '.'
                                         . Wallpaper::ALLOWED_MIME[$mime] . '"',
-            // Cache na borda (Azure Front Door) e no cliente: endpoint anonimo
-            // cacheado e endpoint que nao vira alvo barato de carga.
-            'Cache-Control'          => $ttl > 0 ? 'public, max-age=' . $ttl : 'no-cache',
+            // Cache na borda (CDN) e no cliente: endpoint anonimo cacheado e
+            // endpoint que nao vira alvo barato de carga. Vira privado quando ha
+            // restricao de rede (ver acima).
+            'Cache-Control'          => $cache_control,
         ];
 
         if ($mtime !== false) {

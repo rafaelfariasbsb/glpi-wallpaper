@@ -225,6 +225,12 @@ porque essa combinação tranca a frota inteira em silêncio.
 Todo bloqueio é registrado no log do GLPI com IP e canal — o Intune não reporta o
 bloqueio, o papel de parede simplesmente não aplica.
 
+Enquanto a restrição de rede está ativa, a entrega passa a usar `Cache-Control: private,
+no-store` — senão um objeto `public` guardado na borda seria servido para qualquer IP sem
+nunca consultar a origem, anulando o filtro em silêncio. O custo é o endpoint deixar de
+aproveitar o cache de borda, o que é justamente o objetivo: a origem precisa ver cada
+requisição para avaliá-la.
+
 Recomendado: implante com a lista vazia, valide o piloto de ponta a ponta e só então
 considere restringir.
 
@@ -273,7 +279,7 @@ docker run --rm -v "$PWD":/app -w /app php:8.3-cli php tests/network_filter_test
 ```
 
 Entrega HTTP ponta a ponta com `curl` — cabeçalhos, 304 condicional, `HEAD`, 404 e 405
-(26 verificações). Roda o código real do plugin contra stubs mínimos do GLPI:
+(29 verificações). Roda o código real do plugin contra stubs mínimos do GLPI:
 
 ```bash
 docker run --rm -v "$PWD":/app -w /app php:8.3-cli sh tests/endpoint/run.sh

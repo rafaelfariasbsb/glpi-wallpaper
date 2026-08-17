@@ -104,6 +104,22 @@ echo "== rota legada =="
 check "legada 200"           "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/plugins/wallpaper/front/image.php?c=producao")" "200"
 check "legada canal invalido" "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/plugins/wallpaper/front/image.php?c=../etc/passwd")" "404"
 
+echo "== restricao de rede torna a resposta privada =="
+# Com allowed_networks preenchido, o filtro roda na origem — mas um Cache-Control
+# public deixaria a borda servir o objeto para qualquer IP, anulando a restricao.
+# Aqui o proprio 127.0.0.1 esta autorizado (segue 200), mas a resposta nao pode
+# ser cacheavel publicamente.
+STATE="$STATE" php -r '
+$f = getenv("STATE") . "/state.json";
+$state = json_decode(file_get_contents($f), true);
+$state["config"]["allowed_networks"] = "127.0.0.0/8";
+file_put_contents($f, json_encode($state));
+'
+HR=$(curl -sS -D - -o /dev/null "$BASE/plugins/wallpaper/producao.png")
+check "IP autorizado -> 200"       "$(printf '%s' "$HR" | head -1 | tr -d '\r' | cut -d' ' -f2)" "200"
+check "cache-control privado"      "$(printf '%s' "$HR" | grep -ci '^cache-control: private, no-store')" "1"
+check "sem public com restricao"   "$(printf '%s' "$HR" | grep -ci '^cache-control: public')" "0"
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo "todos os testes de endpoint passaram"
