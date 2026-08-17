@@ -10,7 +10,7 @@ use Glpi\Http\Firewall;
 use GlpiPlugin\Wallpaper\Profile;
 use GlpiPlugin\Wallpaper\Wallpaper;
 
-define('PLUGIN_WALLPAPER_VERSION', '1.1.0');
+define('PLUGIN_WALLPAPER_VERSION', '1.1.1');
 define('PLUGIN_WALLPAPER_MIN_GLPI', '11.0.0');
 define('PLUGIN_WALLPAPER_MAX_GLPI', '11.0.99');
 
@@ -32,7 +32,11 @@ function plugin_init_wallpaper(): void
     Plugin::registerClass(Profile::class, ['addtabon' => \Profile::class]);
 
     if (Session::getLoginUserID() !== false && Wallpaper::canView()) {
-        $PLUGIN_HOOKS['menu_toadd']['wallpaper'] = ['plugins' => Wallpaper::class];
+        // Setor "config" (menu Configurar). O setor "plugins" nem sempre e
+        // renderizado na barra lateral do GLPI 11, e a entrada ficava invisivel.
+        // Lembre que o menu vive em $_SESSION['glpimenu'] e so e remontado no
+        // login: apos instalar, e preciso sair e entrar novamente.
+        $PLUGIN_HOOKS['menu_toadd']['wallpaper'] = ['config' => Wallpaper::class];
     }
 }
 
