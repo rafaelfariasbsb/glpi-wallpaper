@@ -1,3 +1,5 @@
+> 🌍 **English** · [Português (Brasil)](README.pt-BR.md)
+
 # GLPI Wallpaper
 
 A **GLPI 11** plugin that hosts wallpaper images at fixed, public URLs so they can be
@@ -154,8 +156,8 @@ the core, so the behavior is auditable in one place:
 
 Other behavior:
 
-- **`HEAD`** returns the same headers with no body — Front Door and Intune itself may
-  probe before downloading.
+- **`HEAD`** returns the same headers with no body — the CDN and Intune itself may probe
+  before downloading.
 - **`If-None-Match` / `If-Modified-Since`** return **304**, with `If-None-Match` taking
   precedence (RFC 9110). Weak validators (`W/"..."`) are accepted.
 - **Any method other than GET/HEAD** returns **405** with `Allow`.
@@ -176,15 +178,15 @@ Other behavior:
   **`replace=false`** — only `Content-Type` is replaced — so the session's header
   survived *next to* ours, duplicated.
 
-### Caching and Azure Front Door
+### Edge caching (CDN)
 
 The TTL is configurable in the panel (default **3600s**; `0` disables it). Edge caching
 matters because this is an **anonymous** endpoint — without it, it would be a cheap
 source of load against GLPI.
 
 ⚠️ **Operational trap:** since the URL is fixed, after *Promote pilot → production* the
-edge may keep serving the old image for up to the TTL. **Purge the Front Door cache**
-after promoting, or use a TTL that matches how urgent your changes are.
+edge may keep serving the old image for up to the TTL. **Purge the CDN cache** after
+promoting, or use a TTL that matches how urgent your changes are.
 
 ## Optional network restriction
 
@@ -207,13 +209,13 @@ If you still need to restrict access, fill in the panel:
 | Field | Effect |
 |---|---|
 | `Allowed networks` | CIDRs (IPv4/IPv6) or bare IPs. Empty = any origin allowed |
-| `Trusted proxies` | **Required behind a CDN.** Azure Front Door ranges (service tag `AzureFrontDoor.Backend`) |
+| `Trusted proxies` | **Required behind a CDN.** The CDN's ranges (on Azure Front Door, service tag `AzureFrontDoor.Backend`) |
 | `Client IP header` | `X-Forwarded-For` or `X-Azure-ClientIP` |
 
 The IP header is **only read when the connection comes from an address listed under
 "Trusted proxies"** — never raw. Without that rule, any client could forge its own IP
-and the restriction would be decorative. Front Door populates `X-Azure-ClientIP` with a
-single address, whereas `X-Forwarded-For` arrives as a chain.
+and the restriction would be decorative. Azure Front Door populates `X-Azure-ClientIP`
+with a single address, whereas `X-Forwarded-For` arrives as a chain.
 
 Saving allowed networks without declaring any trusted proxy raises a warning in the
 panel, because that combination silently locks out the entire fleet.
@@ -254,7 +256,8 @@ Two things that commonly bite:
   only with `SetEduPolicies` from the
   [SharedPC CSP](https://learn.microsoft.com/windows/client-management/mdm/sharedpc-csp)
   or with `BootToCloudPCEnhanced`. Pro is **not** automatically out, but it does require
-  extra configuration.
+  extra configuration. If the fleet is mixed, see the **ADMX + Remediation** approach in
+  the Intune docs, which works on any edition.
 - Setting the wallpaper through this policy **prevents users from changing it**.
 
 ## Development
@@ -268,7 +271,7 @@ docker run --rm -v "$PWD":/app -w /app php:8.3-cli php tests/network_filter_test
 ```
 
 End-to-end HTTP delivery with `curl` — headers, conditional 304, `HEAD`, 404 and 405
-(24 assertions). Runs the plugin's real code against minimal GLPI stubs:
+(26 assertions). Runs the plugin's real code against minimal GLPI stubs:
 
 ```bash
 docker run --rm -v "$PWD":/app -w /app php:8.3-cli sh tests/endpoint/run.sh
@@ -282,7 +285,8 @@ docker run --rm -v "$PWD":/app -w /app php:8.3-cli sh -c 'find wallpaper -name "
 
 ## Note on language
 
-Code comments and the admin UI are in Portuguese; the documentation is in English.
+Code comments and the admin UI are in Portuguese; the documentation is available in
+English and [Portuguese](README.pt-BR.md).
 
 ## License
 

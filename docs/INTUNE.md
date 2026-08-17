@@ -1,3 +1,5 @@
+> 🌍 **English** · [Português (Brasil)](INTUNE.pt-BR.md)
+
 # Microsoft Intune configuration
 
 Step-by-step guide for consuming the images hosted by the plugin.
