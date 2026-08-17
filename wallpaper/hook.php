@@ -65,7 +65,11 @@ function plugin_wallpaper_install(): bool
     ]);
 
     // Sem acesso por padrao em todos os perfis...
-    ProfileRight::addProfileRights([Wallpaper::$rightname]);
+    // Guarda de idempotencia: no update o direito ja existe (instalado em versao anterior).
+    // Sem isto, addProfileRights lanca "Duplicate entry" e trava o update do plugin.
+    if (!countElementsInTable('glpi_profilerights', ['name' => Wallpaper::$rightname])) {
+        ProfileRight::addProfileRights([Wallpaper::$rightname]);
+    }
     // ...exceto para quem ja administra a configuracao do GLPI.
     $migration->addRight(
         Wallpaper::$rightname,
