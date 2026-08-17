@@ -62,9 +62,13 @@ chown -R www-data:www-data wallpaper
 
 Then install and enable *Wallpaper* under **Setup → Plugins**.
 
-**Log out and log back in.** GLPI caches both the menu (`$_SESSION['glpimenu']`) and the
-profile rights at login time, so a freshly installed plugin does not appear until you
-start a new session. The entry then shows up under **Setup → Wallpaper**.
+There are two ways into the panel:
+
+- **The wrench button** on the plugin card under **Setup → Plugins**. Available as soon
+  as the plugin is enabled, with no re-login required.
+- **Setup → Wallpaper** in the sidebar. This one requires a new session: GLPI caches both
+  the menu (`$_SESSION['glpimenu']`) and profile rights at login time, so **log out and
+  log back in** after installing.
 
 The plugin stores images in `files/_plugins/wallpaper/`, created at install time. It
 never writes to its own code directory.
@@ -73,6 +77,7 @@ never writes to its own code directory.
 
 | Check | How |
 |---|---|
+| Need in right now? | Use the wrench button on the plugin card under **Setup → Plugins** |
 | Did you start a new session? | Log out and back in — the menu is built at login |
 | Does your profile have the right? | **Administration → Profiles → (your profile) → Wallpaper**, tick at least *Read* and save |
 | Is the panel reachable directly? | Open `https://YOUR-GLPI/plugins/wallpaper/front/wallpaper.php` — if it loads, the issue is only the menu cache |

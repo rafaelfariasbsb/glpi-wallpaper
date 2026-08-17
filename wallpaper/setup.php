@@ -10,7 +10,7 @@ use Glpi\Http\Firewall;
 use GlpiPlugin\Wallpaper\Profile;
 use GlpiPlugin\Wallpaper\Wallpaper;
 
-define('PLUGIN_WALLPAPER_VERSION', '1.1.1');
+define('PLUGIN_WALLPAPER_VERSION', '1.1.2');
 define('PLUGIN_WALLPAPER_MIN_GLPI', '11.0.0');
 define('PLUGIN_WALLPAPER_MAX_GLPI', '11.0.99');
 
@@ -19,6 +19,11 @@ function plugin_init_wallpaper(): void
     global $PLUGIN_HOOKS;
 
     $PLUGIN_HOOKS['csrf_compliant']['wallpaper'] = true;
+
+    // Botao de chave inglesa no cartao do plugin, em Configurar > Plug-ins.
+    // Ao contrario do menu lateral, este atalho nao depende do cache de sessao:
+    // aparece assim que o plugin e ativado.
+    $PLUGIN_HOOKS['config_page']['wallpaper'] = 'front/wallpaper.php';
 
     // O Intune baixa a imagem no contexto SYSTEM da maquina: sem sessao, sem cookie.
     // Sem esta linha o firewall do GLPI 11 responderia com um redirect para o login.
