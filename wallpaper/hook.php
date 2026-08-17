@@ -64,18 +64,25 @@ function plugin_wallpaper_install(): bool
         'client_ip_header' => 'X-Forwarded-For',
     ]);
 
-    // Sem acesso por padrao em todos os perfis...
-    // Guarda de idempotencia: no update o direito ja existe (instalado em versao anterior).
-    // Sem isto, addProfileRights lanca "Duplicate entry" e trava o update do plugin.
-    if (!countElementsInTable('glpi_profilerights', ['name' => Wallpaper::$rightname])) {
-        ProfileRight::addProfileRights([Wallpaper::$rightname]);
-    }
-    // ...exceto para quem ja administra a configuracao do GLPI.
+    // A ORDEM IMPORTA. Migration::addRight() so contempla perfis que ainda NAO
+    // possuem linha para o direito: se addProfileRights() rodar antes, criando
+    // linha para todos, o addRight() nao encontra ninguem e desiste em silencio,
+    // deixando todos os perfis com zero direitos.
+    //
+    // Primeiro concede a quem ja administra a configuracao do GLPI...
     $migration->addRight(
         Wallpaper::$rightname,
         READ | UPDATE | Wallpaper::RIGHT_PROMOTE,
         [Config::$rightname => UPDATE]
     );
+
+    // ...depois cria as linhas restantes, sem acesso por padrao.
+    // Guarda de idempotencia: no update o direito ja existe (instalado em versao
+    // anterior). Sem isto, addProfileRights lanca "Duplicate entry" e trava o
+    // update do plugin.
+    if (!countElementsInTable('glpi_profilerights', ['name' => Wallpaper::$rightname])) {
+        ProfileRight::addProfileRights([Wallpaper::$rightname]);
+    }
 
     $dir = Wallpaper::getStorageDir();
     if (!is_dir($dir) && !@mkdir($dir, 0o755, true)) {

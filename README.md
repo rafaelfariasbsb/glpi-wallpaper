@@ -131,6 +131,11 @@ entire fleet without passing through the pilot.
 At install time, profiles that can already update GLPI's Configuration receive all
 three rights; every other profile gets **no access**.
 
+> **Being a Super-Admin does not grant plugin rights by itself.** Every plugin right is
+> an explicit row in `glpi_profilerights`. If the promote button or the production upload
+> form is missing, tick the missing right in the profile tab above and save — the plugin
+> never elevates existing rights on its own.
+
 ## Response headers
 
 Delivery builds its headers explicitly
