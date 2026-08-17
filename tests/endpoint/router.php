@@ -17,6 +17,12 @@ use GlpiPlugin\Wallpaper\ImageResponse;
 
 $path = parse_url((string) $_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/';
 
+// Em producao o GLPI ja abriu a sessao quando o endpoint e alcancado, e com ela
+// o PHP registra Set-Cookie e o Cache-Control do session.cache_limiter. Abrimos
+// aqui tambem: sem isso o teste nao veria os cabecalhos que a entrega precisa
+// descartar antes de escrever os seus.
+session_start();
+
 try {
     // Rota bonita: /plugins/wallpaper/<canal>.<ext> (equivale ao ImageController).
     if (preg_match('#^/plugins/wallpaper/([a-z]+)\.(jpe?g|png)$#', $path, $m)) {

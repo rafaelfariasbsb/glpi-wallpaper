@@ -163,6 +163,12 @@ Other behavior:
   a 200 with an empty body, which Windows would treat as an invalid image.
 - Output buffers are discarded before writing, so no PHP warning can corrupt the image
   bytes.
+- **Every header PHP had already registered is dropped** before the ones above are
+  written. GLPI opens a session before the endpoint is reached, which leaves a
+  `Set-Cookie` and the `session.cache_limiter` `Cache-Control` on the response. A CDN
+  that sees a cookie or a second `Cache-Control` stops caching — Azure Front Door
+  answers `x-cache: CONFIG_NOCACHE` — and the whole fleet ends up downloading straight
+  from GLPI. The endpoint is anonymous: there is no session to keep.
 
 ### Caching and Azure Front Door
 

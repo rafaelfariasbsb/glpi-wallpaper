@@ -67,6 +67,11 @@ check "nosniff"              "$(printf '%s' "$H" | grep -i '^x-content-type-opti
 check "disposition inline"   "$(printf '%s' "$H" | grep -ci '^content-disposition: inline')" "1"
 check "cache-control"        "$(printf '%s' "$H" | grep -ci '^cache-control: public, max-age=3600')" "1"
 check "tem etag"             "$(printf '%s' "$H" | grep -ci '^etag:')" "1"
+# Um segundo Cache-Control (o do session.cache_limiter do PHP) faz o Azure Front
+# Door desistir de cachear, e o cookie de sessao nao tem o que fazer num endpoint
+# anonimo. Os dois precisam ficar de fora.
+check "cache-control unico"  "$(printf '%s' "$H" | grep -ci '^cache-control:')" "1"
+check "sem set-cookie"       "$(printf '%s' "$H" | grep -ci '^set-cookie:')" "0"
 check "tem last-modified"    "$(printf '%s' "$H" | grep -ci '^last-modified:')" "1"
 check "content-length"       "$(printf '%s' "$H" | grep -i '^content-length:' | tr -d '\r' | cut -d' ' -f2)" "$(wc -c < "$STATE/wallpaper/producao.bin" | tr -d ' ')"
 

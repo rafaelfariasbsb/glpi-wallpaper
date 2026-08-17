@@ -197,6 +197,20 @@ class ImageResponse
         }
         ini_set('display_errors', '0');
 
+        // O GLPI abre a sessao antes de chegar aqui, e com ela o PHP registra um
+        // Set-Cookie e o Cache-Control do session.cache_limiter. Em producao a
+        // resposta saia com Set-Cookie e DOIS Cache-Control, e o Azure Front Door
+        // desistia de cachear (x-cache: CONFIG_NOCACHE) — cada maquina da frota
+        // passava a baixar a imagem direto do GLPI, que e exatamente o que o
+        // cache de borda existe para evitar neste endpoint anonimo.
+        //
+        // Descartamos tudo o que o PHP registrou e escrevemos so os nossos: sendo
+        // anonimo, nao ha sessao a manter nem cookie a enviar. O replace=true do
+        // header() abaixo ja bastaria para o Cache-Control (o teste de endpoint
+        // confirma), mas nao remove o cookie nem qualquer cabecalho que outra
+        // camada tenha registrado antes de nos.
+        header_remove();
+
         $status  = $response['status'];
         $headers = $response['headers'];
 
