@@ -48,8 +48,41 @@ comes from the actual file. If you switch the image from PNG to JPEG, the old UR
 responding and the Intune policy does not break; the panel simply warns about the
 mismatch so you can align it when convenient.
 
-The legacy route remains available for diagnostics:
+The legacy route remains available and always works, regardless of web server config:
 `https://YOUR-GLPI/plugins/wallpaper/front/image.php?c=producao`
+
+### Web server: let the `.jpg` path reach PHP
+
+Most GLPI deployments include a static-asset rule that intercepts `.jpg`, `.png`, `.css`
+and friends, serving them straight from disk. That rule swallows the pretty URL: the
+request never reaches PHP, and the web server returns its **own** 404 — not GLPI's.
+
+Check first:
+
+```bash
+curl -s https://YOUR-GLPI/plugins/wallpaper/piloto.jpg | head -5
+```
+
+If the body mentions `nginx` or `Apache`, the request is being intercepted. Add an
+exception **before** the static-asset rule.
+
+**Nginx** — `^~` gives this location priority over regex rules:
+
+```nginx
+location ^~ /plugins/wallpaper/ {
+    try_files $uri /index.php$is_args$args;
+}
+```
+
+**Apache** — inside the GLPI `<VirtualHost>` or `.htaccess`:
+
+```apache
+RewriteEngine On
+RewriteRule ^plugins/wallpaper/(producao|piloto)\.(jpe?g|png)$ /index.php [L,QSA]
+```
+
+Reload the web server and re-test. Until this is in place, use the legacy route in the
+Intune policy and read the caveat in [docs/INTUNE.md](docs/INTUNE.md).
 
 ## Installation
 

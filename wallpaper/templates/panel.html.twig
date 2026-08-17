@@ -25,8 +25,12 @@
                <small class="form-hint mb-3 d-block">
                   Termina em <code>.{{ channel.url|split('.')|last }}</code> porque o Windows
                   classifica o tipo do arquivo e falha com <em>Unknown file type</em> quando a URL
-                  não o declara. Rota alternativa para diagnóstico:
-                  <code>{{ channel.legacy_url }}</code>
+                  não o declara.
+                  <strong>Teste esta URL antes de cadastrá-la no Intune:</strong> se ela retornar 404,
+                  o servidor web está capturando o caminho como arquivo estático e não o encaminha
+                  ao PHP — veja a seção de Nginx/Apache no README.
+                  <br>
+                  Rota alternativa, sempre funcional: <code>{{ channel.legacy_url }}</code>
                </small>
 
                {% if channel.has_image %}
@@ -37,7 +41,9 @@
                      <tr><th>Tamanho</th><td>{{ (channel.filesize / 1024)|round }} KB</td></tr>
                      <tr><th>Atualizado em</th><td>{{ channel.date_mod ? channel.date_mod|formatted_datetime : '-' }}</td></tr>
                   </table>
-                  <img src="{{ channel.url }}" alt="Prévia do canal {{ key }}"
+                  {# A previa usa a rota legada de proposito: ela nao depende de o
+                     servidor web encaminhar caminhos com extensao de imagem ao PHP. #}
+                  <img src="{{ channel.legacy_url }}" alt="Prévia do canal {{ key }}"
                        class="img-fluid rounded border">
                {% else %}
                   <div class="alert alert-warning mb-0">
