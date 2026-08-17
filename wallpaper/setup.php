@@ -10,7 +10,7 @@ use Glpi\Http\Firewall;
 use GlpiPlugin\Wallpaper\Profile;
 use GlpiPlugin\Wallpaper\Wallpaper;
 
-define('PLUGIN_WALLPAPER_VERSION', '1.1.3');
+define('PLUGIN_WALLPAPER_VERSION', '1.1.4');
 define('PLUGIN_WALLPAPER_MIN_GLPI', '11.0.0');
 define('PLUGIN_WALLPAPER_MAX_GLPI', '11.0.99');
 
