@@ -18,11 +18,19 @@ There are two ways to consume the images. Read the next section before picking o
 | Moving parts | One policy | One policy + one Remediation |
 | URL must end in `.jpg`/`.png` | **Yes** — otherwise `DesktopImageStatus = 4` | No — PowerShell does not care |
 
-**The edition mix decides it.** Count the fleet before choosing — in the deployment this
-plugin was written for, 73% of 658 Windows devices were Enterprise and the rest Pro,
-Home or unreported. On those remaining devices `DesktopImageUrl` applies, **reports
-success, and changes nothing** — the worst kind of failure. The ADMX policy works
+**The edition mix decides it.** Count the fleet before choosing — a mixed estate where
+part of the machines run Pro is common, and on those `DesktopImageUrl` applies, **reports
+success, and changes nothing**, which is the worst kind of failure. The ADMX policy works
 everywhere, at the cost of a script to fetch the file.
+
+You can count it from Intune:
+
+```powershell
+Get-MgBetaDeviceManagementManagedDevice -Filter "operatingSystem eq 'Windows'" -All |
+    Group-Object skuFamily | Select-Object Count, Name | Sort-Object Count -Descending
+```
+
+Anything that is not Enterprise, Education or IoT Enterprise will not honour the CSP.
 
 Pick `DesktopImageUrl` when the fleet is uniformly Enterprise/Education; pick ADMX +
 Remediation when it is mixed. Both consume the same channel URLs from the plugin, and
@@ -150,63 +158,174 @@ the 1-hour default is a reasonable middle ground (recommended).
 
 ## ADMX + Remediation (any Windows edition)
 
-Use this when the fleet is not uniformly Enterprise/Education. Two pieces per channel,
-assigned to the **same** group.
+Use this when the fleet is not uniformly Enterprise/Education. It replaces the
+Personalization CSP with two pieces that work on **every** edition, including Pro and
+Home:
 
-### 1. The policy — where the image is read from
+| Piece | Role |
+|---|---|
+| A **Settings catalog** policy with the ADMX setting `Desktop\Wallpaper` | Points Windows at a **local file** |
+| A **Remediation** running the two scripts in [`intune/`](../intune/) | Keeps that local file identical to the GLPI channel |
 
-**Devices → Configuration → Create → Settings catalog**, platform `Windows 10 and later`.
-Search for **Desktop Wallpaper** (category `Administrative Templates\Desktop\Desktop`):
+The ADMX setting accepts only a local or UNC path — never an `http` URL — which is why
+something has to place the file on disk. Assign both pieces to the **same** group.
+
+### Step 1 — configure the scripts
+
+Both scripts start with the same configuration block. Edit it before uploading; the two
+files must agree:
+
+```powershell
+# Channel: 'piloto' or 'producao'. The only difference between the two versions.
+$Channel = 'piloto'
+
+# GLPI URL up to and including the channel parameter.
+$BaseUrl = 'https://YOUR-GLPI/plugins/wallpaper/front/image.php?c='
+
+# Local folder. Must be the SAME path the ADMX policy points at.
+$Dir = 'C:\ProgramData\Wallpaper'
+```
+
+The legacy `image.php?c=` route is used on purpose: PowerShell does not care about the
+file extension, so this path works even where the web server has not been configured to
+let `/plugins/wallpaper/*.jpg` reach PHP. The pretty URL works just as well if you
+prefer it.
+
+You need **two** Remediations, one per channel — identical except for `$Channel`.
+
+### Step 2 — create the policy
+
+**Devices → Configuration → Create → New Policy**, platform `Windows 10 and later`,
+profile type **Settings catalog**. Add settings, search for **Desktop Wallpaper**, and
+pick it under `Administrative Templates\Desktop\Desktop`:
 
 | Field | Value |
 |---|---|
 | Wallpaper Name | `C:\ProgramData\Wallpaper\wallpaper.jpg` |
 | Wallpaper Style | `Fill` |
 
-The setting is **user-scoped** (`./User/Vendor/MSFT/Policy`), so it is assigned to a group
-of users. It accepts only a local or UNC path — never an `http` URL, which is exactly why
-the second piece exists.
+The setting is **user-scoped** (`./User/Vendor/MSFT/Policy`), so it targets a group of
+users — not devices.
 
-> If the file is missing when the user signs in, **no wallpaper is displayed at all** —
-> and the user cannot set their own, because this policy blocks that too. Everything
-> below exists to keep that file present and valid.
+> If the file is missing when the user signs in, **no wallpaper is displayed at all**,
+> and the user cannot set their own, because this policy blocks that too. Everything in
+> step 3 exists to keep that file present and valid.
 
-### 2. The Remediation — how the image gets there
+### Step 3 — create the Remediation
 
-**Devices → Remediations → Create script package**, using
-[`intune/detect-wallpaper.ps1`](../intune/detect-wallpaper.ps1) and
-[`intune/remediate-wallpaper.ps1`](../intune/remediate-wallpaper.ps1):
+**Devices → Remediations → Create script package**:
 
 | Setting | Value |
 |---|---|
-| Run this script using the logged-on credentials | **No** (runs as SYSTEM) |
+| Detection script file | `intune/detect-wallpaper.ps1` |
+| Remediation script file | `intune/remediate-wallpaper.ps1` |
+| Run this script using the logged-on credentials | **No** — it must run as SYSTEM |
 | Enforce script signature check | No |
-| Run script in 64-bit PowerShell | Yes |
-| Schedule | Daily (hourly if wallpaper changes are urgent) |
+| Run script in 64-bit PowerShell | **Yes** |
+| Schedule | **Daily** (hourly only while testing) |
 
-Edit the `$Channel` line at the top of both scripts — `piloto` or `producao`. That is the
-only difference between the two versions.
+**Why a Remediation and not a platform script** (*Devices → Scripts*): a platform script
+runs **once per device** and never again after it succeeds. Promoting a new image in GLPI
+would never reach machines that already ran it. A Remediation runs on a schedule, so
+publishing in GLPI is enough — and it also self-heals if someone deletes the file.
 
-**Why a Remediation and not a platform script.** Platform scripts (*Devices → Scripts*)
-run **once per device** and never again after they succeed. A wallpaper that can change
-needs something that re-checks: a Remediation runs on a schedule, so promoting an image
-in GLPI reaches the fleet on its own. It also self-heals if someone deletes the file.
+### What the scripts do
 
-**What detection does:** compares the plugin's `ETag` (a sha256 of the content) against a
-marker file next to the image, using one `HEAD` request — a few bytes, no image download.
-It also flags a missing, empty or non-image file. If the server is unreachable it reports
-compliant on purpose: the image already on disk is still good, and re-downloading would
-not fix the network.
+**Detection** compares the plugin's `ETag` — a sha256 of the image content — against a
+marker file stored next to the image, using a single `HEAD` request. A few bytes per
+cycle, no image download. It exits 1 (and triggers remediation) when the file is missing,
+empty, not a JPEG/PNG, or when the ETag differs.
 
-**What remediation does:** downloads to a temporary file, verifies the magic bytes are
-JPEG or PNG, and only then moves it into place. A half-written file would leave the fleet
-with a broken background, so the destination is never written directly. It then records
-the ETag and grants read access to the local users.
+If the server is unreachable it deliberately reports **compliant**: the image already on
+disk is still good, and re-downloading would not fix a network problem. Without that, a
+GLPI maintenance window would light up the whole fleet as failed.
 
-> **One device, one channel.** Both channels write to the same `wallpaper.jpg`, so a
-> device that receives the pilot *and* the production Remediation would flip between
-> images depending on which ran last. Keep the groups mutually exclusive, exactly as with
-> the policies.
+**Remediation** downloads to a temporary file, verifies the magic bytes are JPEG or PNG,
+and only then moves it into place:
+
+```powershell
+Move-Item -LiteralPath $Temp -Destination $Image -Force
+```
+
+Writing straight to the destination would leave every device with a half-written file if
+the connection dropped — and the ADMX policy shows no wallpaper at all when the file is
+invalid. It then records the ETag, removes the other channel's marker, and grants read
+access to local users so the user session can display the image.
+
+### Assignment rules that matter
+
+- **One device, one channel.** Both channels write to the same `wallpaper.jpg`. A device
+  receiving the pilot *and* the production Remediation flips between images depending on
+  which ran last. Keep the groups mutually exclusive — and note the trap: if the pilot
+  targets a group of **users** and production targets a group of **devices**, the overlap
+  is invisible until you compare them device by device.
+- **The image appears at the next sign-in**, not immediately. The ADMX policy is applied
+  when the session starts.
+- A user group drags in **every device** its members own. A pilot aimed at "the IT team"
+  can easily reach several times more machines than there are people.
+
+### Known API and portal quirks
+
+| Quirk | What to do |
+|---|---|
+| `runRemediationScript` comes back `false` from Graph even when sent as `true` | Ignore it. Recent Intune versions removed that toggle from the UI; the remediation script runs whenever detection exits 1 and a remediation script exists. Confirm through `deviceRunStates`, not through the field |
+| Assignment accepts only the `assign` action | `POST /assignments` and `PATCH` on an assignment both return *"No OData route exists"* |
+| Setting a schedule replaces the whole assignment | Send `target`, `runRemediationScript` and `runSchedule` together every time |
+
+### Optional: create it from the Graph API
+
+Useful for reproducing the setup across tenants, or for keeping the scripts in git as the
+single source of truth:
+
+```powershell
+Connect-MgGraph -Scopes 'DeviceManagementConfiguration.ReadWrite.All'
+
+$body = @{
+    displayName              = 'Wallpaper - production channel'
+    description              = 'Keeps the local wallpaper identical to the GLPI channel.'
+    publisher                = 'IT'
+    runAs32Bit               = $false
+    runAsAccount             = 'system'
+    enforceSignatureCheck    = $false
+    detectionScriptContent   = [Convert]::ToBase64String([IO.File]::ReadAllBytes('intune/detect-wallpaper.ps1'))
+    remediationScriptContent = [Convert]::ToBase64String([IO.File]::ReadAllBytes('intune/remediate-wallpaper.ps1'))
+} | ConvertTo-Json
+
+$script = Invoke-MgGraphRequest -Method POST `
+    -Uri 'https://graph.microsoft.com/beta/deviceManagement/deviceHealthScripts' -Body $body
+
+# Assign it, with a daily schedule
+$assign = @{
+    deviceHealthScriptAssignments = @(@{
+        target = @{
+            '@odata.type' = '#microsoft.graph.groupAssignmentTarget'
+            groupId       = '<GROUP-OBJECT-ID>'
+        }
+        runRemediationScript = $true
+        runSchedule = @{
+            '@odata.type' = '#microsoft.graph.deviceHealthScriptDailySchedule'
+            interval      = 1
+            time          = '10:00:00'
+            useUtc        = $false
+        }
+    })
+} | ConvertTo-Json -Depth 6
+
+Invoke-MgGraphRequest -Method POST -Body $assign `
+    -Uri "https://graph.microsoft.com/beta/deviceManagement/deviceHealthScripts/$($script.id)/assign"
+```
+
+Verify the result through the run states rather than the assignment object:
+
+```powershell
+Invoke-MgGraphRequest -Method GET -Uri (
+    'https://graph.microsoft.com/beta/deviceManagement/deviceHealthScripts/' +
+    "$($script.id)/deviceRunStates?`$expand=managedDevice(`$select=deviceName)")
+```
+
+A healthy first run reads: detection `fail` with *"imagem ausente"*, remediation
+`success`, and the post-remediation detection reporting *"em dia"* with the same ETag the
+server publishes.
 
 ---
 

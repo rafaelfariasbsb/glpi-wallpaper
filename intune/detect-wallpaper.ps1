@@ -9,17 +9,29 @@
     no upload. Uma requisicao HEAD por ciclo, alguns bytes, sem baixar a imagem —
     barato o suficiente para rodar de hora em hora na frota inteira.
 
-    Para a versao de PRODUCAO, troque apenas a linha $Channel abaixo.
-
     @license GPL-3.0-or-later
 #>
 
+# ---------------------------------------------------------------------------
+# CONFIGURACAO — ajuste estas tres linhas antes de subir o script ao Intune.
+# O bloco e identico no script de remediacao: os dois precisam concordar.
+# ---------------------------------------------------------------------------
+
+# Canal do plugin: 'piloto' ou 'producao'. E a unica diferenca entre as duas
+# versoes da Remediation.
 $Channel = 'piloto'
 
+# URL do GLPI ate o parametro de canal, inclusive.
 $BaseUrl = 'https://YOUR-GLPI/plugins/wallpaper/front/image.php?c='
-$Dir     = 'C:\ProgramData\Wallpaper'
-$Image   = Join-Path $Dir 'wallpaper.jpg'
-$Stamp   = Join-Path $Dir "$Channel.etag"
+
+# Pasta local da imagem. Precisa ser a MESMA apontada pela politica ADMX
+# (Desktop\Wallpaper -> Wallpaper Name), senao a politica nao acha o arquivo.
+$Dir = 'C:\ProgramData\Wallpaper'
+
+# ---------------------------------------------------------------------------
+
+$Image = Join-Path $Dir 'wallpaper.jpg'
+$Stamp = Join-Path $Dir "$Channel.etag"
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12

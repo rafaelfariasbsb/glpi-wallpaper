@@ -1,26 +1,35 @@
 <#
     Remediacao da Remediation "wallpaper" do Intune.
 
-    Baixa a imagem do canal e a grava em C:\ProgramData\Wallpaper, que e o
-    caminho apontado pela politica ADMX (Desktop\Wallpaper).
+    Baixa a imagem do canal e a grava na pasta apontada pela politica ADMX
+    (Desktop\Wallpaper).
 
     Escreve em arquivo temporario e so promove ao destino depois de validar o
     conteudo. Sobrescrever o destino direto deixaria a frota inteira com um
     arquivo pela metade caso a conexao caisse no meio do download — e a ADMX nao
     exibe wallpaper nenhuma quando o arquivo nao presta.
 
-    Para a versao de PRODUCAO, troque apenas a linha $Channel abaixo.
-
     @license GPL-3.0-or-later
 #>
 
+# ---------------------------------------------------------------------------
+# CONFIGURACAO — precisa ser IDENTICA a do script de deteccao.
+# ---------------------------------------------------------------------------
+
+# Canal do plugin: 'piloto' ou 'producao'.
 $Channel = 'piloto'
 
+# URL do GLPI ate o parametro de canal, inclusive.
 $BaseUrl = 'https://YOUR-GLPI/plugins/wallpaper/front/image.php?c='
-$Dir     = 'C:\ProgramData\Wallpaper'
-$Image   = Join-Path $Dir 'wallpaper.jpg'
-$Stamp   = Join-Path $Dir "$Channel.etag"
-$Temp    = Join-Path $Dir "wallpaper.$Channel.tmp"
+
+# Pasta local da imagem, a mesma apontada pela politica ADMX.
+$Dir = 'C:\ProgramData\Wallpaper'
+
+# ---------------------------------------------------------------------------
+
+$Image = Join-Path $Dir 'wallpaper.jpg'
+$Stamp = Join-Path $Dir "$Channel.etag"
+$Temp  = Join-Path $Dir "wallpaper.$Channel.tmp"
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12

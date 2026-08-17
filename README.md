@@ -190,12 +190,12 @@ after promoting, or use a TTL that matches how urgent your changes are.
 
 **Decision: the IP filter ships DISABLED by default.**
 
-The reason is this plugin's actual deployment — GLPI published on the internet behind
-**Azure Front Door**, serving cloud-native machines:
+The reasoning assumes the common case — GLPI published on the internet behind a CDN,
+serving cloud-native machines:
 
 1. **Behind a CDN, `REMOTE_ADDR` is always the edge IP, never the machine's.** A naive
-   filter would evaluate Front Door rather than the device — blocking everyone or no
-   one, but never what was intended.
+   filter would evaluate the CDN rather than the device — blocking everyone or no one,
+   but never what was intended.
 2. **Cloud-native machines connect from anywhere** — home office, 4G, customer networks.
    Restricting by IP breaks precisely the devices that depend on MDM the most.
 3. **The URL is fixed and guessable by design.** That is a requirement of the Intune
