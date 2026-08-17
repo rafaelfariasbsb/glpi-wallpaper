@@ -47,6 +47,10 @@ final class ImageController extends AbstractController
     {
         $result = ImageResponse::build($channel, $request->server->all());
 
+        // O Symfony emite os cabecalhos com replace=false, entao o Cache-Control
+        // da sessao sobreviveria ao lado do nosso e o CDN pararia de cachear.
+        ImageResponse::discardPendingHeaders();
+
         // Para HEAD o kernel remove o corpo em prepare(), preservando o
         // Content-Length que ja calculamos.
         $body = $result['send_body'] && $result['path'] !== null

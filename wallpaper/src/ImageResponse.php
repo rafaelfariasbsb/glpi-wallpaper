@@ -183,6 +183,36 @@ class ImageResponse
     }
 
     /**
+     * Descarta os cabecalhos que o PHP ja tenha registrado antes da entrega.
+     *
+     * O GLPI abre a sessao antes de o endpoint ser alcancado, e com ela o PHP
+     * registra um Set-Cookie e o Cache-Control do session.cache_limiter
+     * ("no-store, no-cache, must-revalidate"). Em producao a resposta saia com
+     * o cookie e DOIS Cache-Control, e o Azure Front Door desistia de cachear
+     * (x-cache: CONFIG_NOCACHE) — cada maquina da frota baixava a imagem direto
+     * do GLPI, que e exatamente o que o cache de borda existe para evitar neste
+     * endpoint anonimo.
+     *
+     * Precisa ser chamado nos DOIS caminhos de entrega, por motivos diferentes:
+     *
+     * - no script legado, o header() de send() usa replace=true e sozinho ja
+     *   resolveria o Cache-Control, mas nao remove o cookie;
+     * - na rota do Controller quem escreve e o Symfony, e o Response::sendHeaders()
+     *   emite tudo com replace=FALSE (so o Content-Type e substituido). La o
+     *   cabecalho da sessao sobrevive ao lado do nosso, duplicado.
+     *
+     * Sendo anonimo, o endpoint nao tem sessao a manter nem cookie a enviar.
+     */
+    public static function discardPendingHeaders(): void
+    {
+        if (headers_sent()) {
+            return;
+        }
+
+        header_remove();
+    }
+
+    /**
      * Envia a resposta com header()/readfile() e encerra.
      *
      * Qualquer warning ja emitido por PHP corromperia os bytes da imagem, entao
@@ -197,19 +227,7 @@ class ImageResponse
         }
         ini_set('display_errors', '0');
 
-        // O GLPI abre a sessao antes de chegar aqui, e com ela o PHP registra um
-        // Set-Cookie e o Cache-Control do session.cache_limiter. Em producao a
-        // resposta saia com Set-Cookie e DOIS Cache-Control, e o Azure Front Door
-        // desistia de cachear (x-cache: CONFIG_NOCACHE) — cada maquina da frota
-        // passava a baixar a imagem direto do GLPI, que e exatamente o que o
-        // cache de borda existe para evitar neste endpoint anonimo.
-        //
-        // Descartamos tudo o que o PHP registrou e escrevemos so os nossos: sendo
-        // anonimo, nao ha sessao a manter nem cookie a enviar. O replace=true do
-        // header() abaixo ja bastaria para o Cache-Control (o teste de endpoint
-        // confirma), mas nao remove o cookie nem qualquer cabecalho que outra
-        // camada tenha registrado antes de nos.
-        header_remove();
+        self::discardPendingHeaders();
 
         $status  = $response['status'];
         $headers = $response['headers'];

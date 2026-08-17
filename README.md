@@ -165,10 +165,16 @@ Other behavior:
   bytes.
 - **Every header PHP had already registered is dropped** before the ones above are
   written. GLPI opens a session before the endpoint is reached, which leaves a
-  `Set-Cookie` and the `session.cache_limiter` `Cache-Control` on the response. A CDN
-  that sees a cookie or a second `Cache-Control` stops caching — Azure Front Door
-  answers `x-cache: CONFIG_NOCACHE` — and the whole fleet ends up downloading straight
-  from GLPI. The endpoint is anonymous: there is no session to keep.
+  `Set-Cookie` and the `session.cache_limiter` `Cache-Control` on the response. Both
+  had to go: a cookie on an anonymous endpoint is a leak, and many CDNs refuse to cache
+  a response carrying one — as does a second, contradictory `Cache-Control`.
+
+  This matters on **both** entry points, for different reasons. In the legacy script,
+  `header()` uses `replace=true` and would already collapse the duplicate `Cache-Control`
+  on its own, but never removes the cookie. On the Controller route the headers are
+  written by Symfony, whose `Response::sendHeaders()` emits everything with
+  **`replace=false`** — only `Content-Type` is replaced — so the session's header
+  survived *next to* ours, duplicated.
 
 ### Caching and Azure Front Door
 
