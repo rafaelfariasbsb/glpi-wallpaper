@@ -5,6 +5,32 @@ Step-by-step guide for consuming the images hosted by the plugin.
 This document covers the **Intune** side. Installing and using the plugin in GLPI is
 covered in the [README](../README.md).
 
+There are two ways to consume the images. Read the next section before picking one.
+
+---
+
+## Which approach: `DesktopImageUrl` or ADMX + Remediation
+
+| | **Personalization CSP** (`DesktopImageUrl`) | **ADMX `Desktop\Wallpaper` + Remediation** |
+|---|---|---|
+| Windows editions | Enterprise / Education / IoT only | **Any**, including Pro and Home |
+| Downloads the image | Windows itself, from the URL | A Remediation script, to a local path |
+| Moving parts | One policy | One policy + one Remediation |
+| URL must end in `.jpg`/`.png` | **Yes** — otherwise `DesktopImageStatus = 4` | No — PowerShell does not care |
+
+**The edition mix decides it.** Count the fleet before choosing — in the deployment this
+plugin was written for, 73% of 658 Windows devices were Enterprise and the rest Pro,
+Home or unreported. On those remaining devices `DesktopImageUrl` applies, **reports
+success, and changes nothing** — the worst kind of failure. The ADMX policy works
+everywhere, at the cost of a script to fetch the file.
+
+Pick `DesktopImageUrl` when the fleet is uniformly Enterprise/Education; pick ADMX +
+Remediation when it is mixed. Both consume the same channel URLs from the plugin, and
+in both cases changing the wallpaper is done in GLPI, never in Intune.
+
+Scripts for the second approach live in [`intune/`](../intune/) — see
+[ADMX + Remediation](#admx--remediation-any-windows-edition) below.
+
 ---
 
 ## Before you start
@@ -119,6 +145,68 @@ az afd endpoint purge \
 
 Alternative: lower the TTL in the plugin panel. The cost is more requests reaching GLPI —
 the 1-hour default is a reasonable middle ground (recommended).
+
+---
+
+## ADMX + Remediation (any Windows edition)
+
+Use this when the fleet is not uniformly Enterprise/Education. Two pieces per channel,
+assigned to the **same** group.
+
+### 1. The policy — where the image is read from
+
+**Devices → Configuration → Create → Settings catalog**, platform `Windows 10 and later`.
+Search for **Desktop Wallpaper** (category `Administrative Templates\Desktop\Desktop`):
+
+| Field | Value |
+|---|---|
+| Wallpaper Name | `C:\ProgramData\Wallpaper\wallpaper.jpg` |
+| Wallpaper Style | `Fill` |
+
+The setting is **user-scoped** (`./User/Vendor/MSFT/Policy`), so it is assigned to a group
+of users. It accepts only a local or UNC path — never an `http` URL, which is exactly why
+the second piece exists.
+
+> If the file is missing when the user signs in, **no wallpaper is displayed at all** —
+> and the user cannot set their own, because this policy blocks that too. Everything
+> below exists to keep that file present and valid.
+
+### 2. The Remediation — how the image gets there
+
+**Devices → Remediations → Create script package**, using
+[`intune/detect-wallpaper.ps1`](../intune/detect-wallpaper.ps1) and
+[`intune/remediate-wallpaper.ps1`](../intune/remediate-wallpaper.ps1):
+
+| Setting | Value |
+|---|---|
+| Run this script using the logged-on credentials | **No** (runs as SYSTEM) |
+| Enforce script signature check | No |
+| Run script in 64-bit PowerShell | Yes |
+| Schedule | Daily (hourly if wallpaper changes are urgent) |
+
+Edit the `$Channel` line at the top of both scripts — `piloto` or `producao`. That is the
+only difference between the two versions.
+
+**Why a Remediation and not a platform script.** Platform scripts (*Devices → Scripts*)
+run **once per device** and never again after they succeed. A wallpaper that can change
+needs something that re-checks: a Remediation runs on a schedule, so promoting an image
+in GLPI reaches the fleet on its own. It also self-heals if someone deletes the file.
+
+**What detection does:** compares the plugin's `ETag` (a sha256 of the content) against a
+marker file next to the image, using one `HEAD` request — a few bytes, no image download.
+It also flags a missing, empty or non-image file. If the server is unreachable it reports
+compliant on purpose: the image already on disk is still good, and re-downloading would
+not fix the network.
+
+**What remediation does:** downloads to a temporary file, verifies the magic bytes are
+JPEG or PNG, and only then moves it into place. A half-written file would leave the fleet
+with a broken background, so the destination is never written directly. It then records
+the ETag and grants read access to the local users.
+
+> **One device, one channel.** Both channels write to the same `wallpaper.jpg`, so a
+> device that receives the pilot *and* the production Remediation would flip between
+> images depending on which ran last. Keep the groups mutually exclusive, exactly as with
+> the policies.
 
 ---
 
